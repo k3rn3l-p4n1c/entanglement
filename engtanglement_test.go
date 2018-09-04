@@ -3,7 +3,8 @@ package entangle
 import "testing"
 
 func TestGetAndSetLocal(t *testing.T) {
-	entanglement := New()
+	config := GetDefaultConfig()
+	entanglement := New(config)
 
 	value := "sample data"
 	entanglement.Set(value)
