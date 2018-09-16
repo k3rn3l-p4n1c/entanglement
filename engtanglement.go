@@ -13,11 +13,6 @@ import (
 	"github.com/pborman/uuid"
 )
 
-var (
-	instance *System
-	once     *sync.Once
-)
-
 type Config struct {
 	RaftDir  string
 	RaftAddr string
@@ -57,39 +52,35 @@ type Entanglement struct {
 	mu     *sync.Mutex
 }
 
-func GetInstance(config Config) *System {
-	once.Do(func() {
-		os.MkdirAll(config.RaftDir, 0700)
+func Bootstrap(config Config) *System {
+	os.MkdirAll(config.RaftDir, 0700)
 
-		s := &System{
-			logger: log.New(os.Stderr, "[store] ", log.LstdFlags),
-			mu:     &sync.Mutex{},
+	s := &System{
+		logger: log.New(os.Stderr, "[store] ", log.LstdFlags),
+		mu:     &sync.Mutex{},
+	}
+
+	s.RaftDir = config.RaftDir
+	s.RaftBind = config.RaftAddr
+	if err := s.Open(config.JoinAddr == "", config.NodeID); err != nil {
+		config.Log.Fatalf("failed to open store: %s", err.Error())
+	}
+
+	h := httpd.New(config.HttpAddr, s)
+	if err := h.Start(); err != nil {
+		config.Log.Fatalf("failed to start HTTP service: %s", err.Error())
+	}
+
+	// If join was specified, make the join request.
+	if config.JoinAddr != "" {
+		if err := join(config.JoinAddr, config.RaftAddr, config.NodeID); err != nil {
+			config.Log.Fatalf("failed to join node at %s: %s", config.JoinAddr, err.Error())
 		}
+	}
 
-		s.RaftDir = config.RaftDir
-		s.RaftBind = config.RaftAddr
-		if err := s.Open(config.JoinAddr == "", config.NodeID); err != nil {
-			config.Log.Fatalf("failed to open store: %s", err.Error())
-		}
+	config.Log.Println("hraft started successfully")
 
-		h := httpd.New(config.HttpAddr, s)
-		if err := h.Start(); err != nil {
-			config.Log.Fatalf("failed to start HTTP service: %s", err.Error())
-		}
-
-		// If join was specified, make the join request.
-		if config.JoinAddr != "" {
-			if err := join(config.JoinAddr, config.RaftAddr, config.NodeID); err != nil {
-				config.Log.Fatalf("failed to join node at %s: %s", config.JoinAddr, err.Error())
-			}
-		}
-
-		config.Log.Println("hraft started successfully")
-
-		instance = s
-	})
-
-	return instance
+	return s
 }
 
 func (s *System) New(key string) *Entanglement {
