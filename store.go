@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	"errors"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -84,6 +86,9 @@ func (s *System) Open(enableSingle bool, localID string) error {
 // Get returns the value for the given key.
 func (s *System) Get(key string) (string, error) {
 	e := s.m[key]
+	if e == nil {
+		return "", errors.New("not found")
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.data, nil
@@ -131,11 +136,11 @@ func (s *System) Delete(key string) error {
 // Join joins a node, identified by NodeID and located at addr, to this store.
 // The node must be ready to respond to Raft communications at that address.
 func (s *System) Join(nodeID, addr string) error {
-	s.logger.Printf("received join request for remote node %s at %s", nodeID, addr)
+	s.logger.Debugf("received join request for remote node %s at %s", nodeID, addr)
 
 	configFuture := s.raft.GetConfiguration()
 	if err := configFuture.Error(); err != nil {
-		s.logger.Printf("failed to get raft configuration: %v", err)
+		s.logger.Warnf("failed to get raft configuration: %v", err)
 		return err
 	}
 
@@ -146,7 +151,7 @@ func (s *System) Join(nodeID, addr string) error {
 			// However if *both* the ID and the address are the same, then nothing -- not even
 			// a join operation -- is needed.
 			if srv.Address == raft.ServerAddress(addr) && srv.ID == raft.ServerID(nodeID) {
-				s.logger.Printf("node %s at %s already member of cluster, ignoring join request", nodeID, addr)
+				s.logger.Infof("node %s at %s already member of cluster, ignoring join request", nodeID, addr)
 				return nil
 			}
 
@@ -161,7 +166,7 @@ func (s *System) Join(nodeID, addr string) error {
 	if f.Error() != nil {
 		return f.Error()
 	}
-	s.logger.Printf("node %s at %s joined successfully", nodeID, addr)
+	s.logger.Infof("node %s at %s joined successfully", nodeID, addr)
 	return nil
 }
 
@@ -171,9 +176,9 @@ type fsm System
 func (f *fsm) Apply(l *raft.Log) interface{} {
 	var c command
 	if err := json.Unmarshal(l.Data, &c); err != nil {
-		panic(fmt.Sprintf("failed to unmarshal command: %s", err.Error()))
+		logrus.Panicf("failed to unmarshal command: %s", err.Error())
 	}
-	f.logger.Println("get something", c.Op)
+	f.logger.Debugf("get something", c.Op)
 
 	switch c.Op {
 	case "set":
@@ -214,6 +219,7 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 func (f *fsm) applySet(key, value string) interface{} {
 	e := f.m[key]
 	if e == nil {
+		f.logger.Debug("apply set create new key")
 		e = (*System)(f).New(key)
 	}
 	e.mu.Lock()

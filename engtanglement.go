@@ -2,7 +2,6 @@ package entanglement
 
 import (
 	"sync"
-	"log"
 	"os"
 	"github.com/hashicorp/raft"
 	"github.com/k3rn3l-p4n1c/entanglement/httpd"
@@ -11,15 +10,20 @@ import (
 	"fmt"
 	"bytes"
 	"github.com/pborman/uuid"
+	"errors"
+	"time"
+	"github.com/sirupsen/logrus"
 )
+
 
 type Config struct {
 	RaftDir  string
 	RaftAddr string
 	HttpAddr string
 	JoinAddr string
+	MaxRetry int
 	NodeID   string
-	Log      *log.Logger
+	Log      *logrus.Logger
 }
 
 func DefaultConfig() Config {
@@ -28,15 +32,16 @@ func DefaultConfig() Config {
 		RaftAddr: ":12700",
 		HttpAddr: ":12701",
 		JoinAddr: "",
+		MaxRetry: 3,
 		NodeID:   uuid.New(),
-		Log:      log.New(os.Stdout, log.Prefix()+"[entanglement]", log.Flags()),
+		Log:      logrus.New(),
 	}
 }
 
 type System struct {
 	m map[string]*Entanglement
 
-	logger *log.Logger
+	logger *logrus.Logger
 	mu     *sync.Mutex
 	once   sync.Once
 
@@ -56,7 +61,8 @@ func Bootstrap(config Config) *System {
 	os.MkdirAll(config.RaftDir, 0700)
 
 	s := &System{
-		logger: log.New(os.Stderr, "[store] ", log.LstdFlags),
+		m:      make(map[string]*Entanglement),
+		logger: logrus.New(),
 		mu:     &sync.Mutex{},
 	}
 
@@ -73,23 +79,40 @@ func Bootstrap(config Config) *System {
 
 	// If join was specified, make the join request.
 	if config.JoinAddr != "" {
-		if err := join(config.JoinAddr, config.RaftAddr, config.NodeID); err != nil {
-			config.Log.Fatalf("failed to join node at %s: %s", config.JoinAddr, err.Error())
+		config.Log.Debugf("trying to connect to %s", config.JoinAddr)
+		err := join(config.JoinAddr, config.RaftAddr, config.NodeID)
+		retry := 0
+		for err != nil {
+			if retry >= config.MaxRetry {
+				config.Log.Fatalf("failed to join node at %s: %s after %d retries", config.JoinAddr, err.Error(), config.MaxRetry)
+			}
+			time.Sleep(1 * time.Second)
+			config.Log.Debugf("retrying to connect to %s", config.JoinAddr)
+			err = join(config.JoinAddr, config.RaftAddr, config.NodeID)
+			retry ++
 		}
 	}
 
-	config.Log.Println("hraft started successfully")
+	config.Log.Info("hraft started successfully")
 
 	return s
 }
 
 func (s *System) New(key string) *Entanglement {
-	return &Entanglement{
-		key:    key,
-		data:   "",
-		system: s,
-		mu:     &sync.Mutex{},
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	e := s.m[key]
+	if e == nil {
+		e = &Entanglement{
+			key:    key,
+			data:   "",
+			system: s,
+			mu:     &sync.Mutex{},
+		}
+		s.m[key] = e
 	}
+	return e
 }
 
 // Set sets the value for the given key.
@@ -112,6 +135,9 @@ func join(joinAddr, raftAddr, nodeID string) error {
 	resp, err := http.Post(fmt.Sprintf("http://%s/join", joinAddr), "application-type/json", bytes.NewReader(b))
 	if err != nil {
 		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return errors.New(fmt.Sprintf("unable to join. status_code=%d", resp.StatusCode))
 	}
 	defer resp.Body.Close()
 
