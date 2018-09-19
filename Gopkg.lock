@@ -8,10 +8,10 @@
   revision = "3c58d8115a78a6879e5df75ae900846768d36895"
 
 [[projects]]
-  name = "github.com/boltdb/bolt"
+  name = "github.com/google/uuid"
   packages = ["."]
-  revision = "2f1ce7a837dcb8da3ec595b1dac9d0632f0f99e8"
-  version = "v1.3.1"
+  revision = "d460ce9f8df2e77fb1ba55ca87fafed96c607494"
+  version = "v1.0.0"
 
 [[projects]]
   name = "github.com/hashicorp/go-immutable-radix"
@@ -38,20 +38,20 @@
   version = "v1.0.0"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/hashicorp/raft-boltdb"
+  name = "github.com/pborman/uuid"
   packages = ["."]
-  revision = "6e5ba93211eaf8d9a2ad7e41ffad8c6f160f9fe3"
+  revision = "adf5a7427709b9deb95d29d3fa8a2bf9cfd388f1"
+  version = "v1.2"
 
 [[projects]]
-  branch = "master"
-  name = "golang.org/x/sys"
-  packages = ["unix"]
-  revision = "d0be0721c37eeb5299f245a996a483160fc36940"
+  name = "github.com/sirupsen/logrus"
+  packages = ["."]
+  revision = "418b41d23a1bf978c06faea5313ba194650ac088"
+  version = "v0.8.7"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "eae3d733fe8e73d65ebf0a14ef84014180ce38da4abb2078eb1535f13f6f6423"
+  inputs-digest = "cce5a22a66f00133e68ebda5d9d33dc2d3a6c561cea322654016bfbe1669678e"
   solver-name = "gps-cdcl"
   solver-version = 1
