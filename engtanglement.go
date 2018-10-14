@@ -24,6 +24,8 @@ type Config struct {
 	MaxRetry int
 	NodeID   string
 	Log      *logrus.Logger
+
+	OnJoin  func(string)
 }
 
 func DefaultConfig() Config {
@@ -48,11 +50,13 @@ type System struct {
 	RaftDir  string
 	RaftBind string
 	raft     *raft.Raft
+
+	onJoin  func(string)
 }
 
 type Entanglement struct {
 	key    string
-	data   string
+	data   interface{}
 	system *System
 	mu     *sync.Mutex
 }
@@ -68,6 +72,7 @@ func Bootstrap(config Config) *System {
 
 	s.RaftDir = config.RaftDir
 	s.RaftBind = config.RaftAddr
+	s.onJoin = config.OnJoin
 	if err := s.Open(config.JoinAddr == "", config.NodeID); err != nil {
 		config.Log.Fatalf("failed to open store: %s", err.Error())
 	}
@@ -98,7 +103,7 @@ func Bootstrap(config Config) *System {
 	return s
 }
 
-func (s *System) New(key string) *Entanglement {
+func (s *System) New(key string, value interface{}) *Entanglement {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -106,7 +111,7 @@ func (s *System) New(key string) *Entanglement {
 	if e == nil {
 		e = &Entanglement{
 			key:    key,
-			data:   "",
+			data:   value,
 			system: s,
 			mu:     &sync.Mutex{},
 		}
@@ -116,12 +121,12 @@ func (s *System) New(key string) *Entanglement {
 }
 
 // Set sets the value for the given key.
-func (e *Entanglement) Set(value string) error {
+func (e *Entanglement) Set(value interface{}) error {
 	return e.system.Set(e.key, value)
 }
 
 // Get returns the value for the given key.
-func (e *Entanglement) Get() (string, error) {
+func (e *Entanglement) Get() (interface{}, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.data, nil

@@ -12,10 +12,10 @@ import (
 // Store is the interface Raft-backed key-value stores must implement.
 type Store interface {
 	// Get returns the value for the given key.
-	Get(key string) (string, error)
+	Get(key string) (interface{}, error)
 
 	// Set sets the value for the given key, via distributed consensus.
-	Set(key, value string) error
+	Set(key string, value interface{}) error
 
 	// Delete removes the given key, via distributed consensus.
 	Delete(key string) error

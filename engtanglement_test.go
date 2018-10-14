@@ -2,8 +2,8 @@ package entanglement
 
 import (
 	"testing"
-	"log"
-	"os"
+	"github.com/sirupsen/logrus"
+	"time"
 )
 
 func TestGetAndSetLocal(t *testing.T) {
@@ -13,18 +13,21 @@ func TestGetAndSetLocal(t *testing.T) {
 		HttpAddr: ":11001",
 		JoinAddr: "",
 		NodeID:   "node1",
-		Log:      log.New(os.Stdout, log.Prefix()+"[entanglement1]", log.Flags()),
+		Log:      logrus.New(),
 	}
-	s := GetInstance(conf)
+	s := Bootstrap(conf)
 
 	entanglement := s.New("key")
 
 	value := "sample data"
-	entanglement.Set(value)
-
+	err := entanglement.Set(value)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	time.Sleep(1 * time.Second)
 	receivedValue, _ := entanglement.Get()
 
 	if value != receivedValue {
-		t.Errorf("Setted value is not equal to getted value")
+		t.Errorf("Setted value is not equal to getted value: \"%s\" != \"%s\"", value, receivedValue)
 	}
 }

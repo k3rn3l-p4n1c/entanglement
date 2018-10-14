@@ -84,7 +84,7 @@ func (s *System) Open(enableSingle bool, localID string) error {
 }
 
 // Get returns the value for the given key.
-func (s *System) Get(key string) (string, error) {
+func (s *System) Get(key string) (interface{}, error) {
 	e := s.m[key]
 	if e == nil {
 		return "", errors.New("not found")
@@ -95,15 +95,20 @@ func (s *System) Get(key string) (string, error) {
 }
 
 // Set sets the value for the given key.
-func (s *System) Set(key, value string) error {
+func (s *System) Set(key string, value interface{}) error {
 	if s.raft.State() != raft.Leader {
 		return fmt.Errorf("not leader")
+	}
+
+	jsonValue, err := json.Marshal(value)
+	if err != nil {
+		return err
 	}
 
 	c := &command{
 		Op:    "set",
 		Key:   key,
-		Value: value,
+		Value: string(jsonValue),
 	}
 	b, err := json.Marshal(c)
 	if err != nil {
@@ -166,6 +171,7 @@ func (s *System) Join(nodeID, addr string) error {
 	if f.Error() != nil {
 		return f.Error()
 	}
+	s.onJoin(addr)
 	s.logger.Infof("node %s at %s joined successfully", nodeID, addr)
 	return nil
 }
@@ -196,7 +202,7 @@ func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
 	defer f.mu.Unlock()
 
 	// Clone the map.
-	o := make(map[string]string)
+	o := make(map[string]interface{})
 	for k, v := range f.m {
 		o[k] = v.data
 	}
@@ -219,13 +225,20 @@ func (f *fsm) Restore(rc io.ReadCloser) error {
 func (f *fsm) applySet(key, value string) interface{} {
 	e := f.m[key]
 	if e == nil {
-		f.logger.Debug("apply set create new key")
-		e = (*System)(f).New(key)
+		f.logger.Debug("apply set key does not exists")
+		return nil
+		//e = (*System)(f).New(key)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.data = value
+
+	err := json.Unmarshal([]byte(value), &e.data)
+	if err != nil {
+		f.logger.Error("unable to deserialize %s",value)
+		return nil
+	}
+
 	f.m[key] = e
 
 	return nil
@@ -240,7 +253,7 @@ func (f *fsm) applyDelete(key string) interface{} {
 }
 
 type fsmSnapshot struct {
-	store map[string]string
+	store map[string]interface{}
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
